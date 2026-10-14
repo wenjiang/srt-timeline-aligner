@@ -1,0 +1,23 @@
+{
+  "name": "srt-timeline-aligner",
+  "version": "1.0.0",
+  "description": "SRT 字幕时间轴对齐工具：导入 SRT，通过整体偏移、比例缩放、两点锚点同步、一键修复错乱等方式，把字幕时间码对齐到音视频，并支持估算配音时长与导出。纯本地、无 AI、无联网。",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [
+    "srt",
+    "subtitle",
+    "timeline",
+    "aligner",
+    "字幕",
+    "时间轴",
+    "对齐"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

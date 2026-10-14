@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>字幕时间轴对齐工具</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⏱️ 字幕时间轴对齐工具 (v1.0)</div>
+    <div class="actions">
+      <button id="open" class="btn primary">导入字幕 (SRT)</button>
+      <button id="save" class="btn">导出 SRT</button>
+      <span class="range-export">
+        <label class="chk">区间</label>
+        <input type="number" id="rangeFrom" min="1" step="1" placeholder="起#" class="num-in" title="起始序号（表格第几行，从 1 开始）" />
+        <span class="dash">—</span>
+        <input type="number" id="rangeTo" min="1" step="1" placeholder="止#" class="num-in" title="结束序号（含）" />
+        <button id="saveRange" class="btn" title="导出指定序号区间的字幕（如第 3 到第 18 条）">导出区间</button>
+      </span>
+      <button id="undoBtn" class="btn" title="撤销 (Ctrl+Z)" disabled>↶ 撤销</button>
+      <button id="redoBtn" class="btn" title="重做 (Ctrl+Y)" disabled>↷ 重做</button>
+      <button id="toggleTimeline" class="btn" title="显示/隐藏时间轴调整面板">⏱ 时间轴</button>
+      <label class="chk">
+        <input type="checkbox" id="rescale" />
+        导出时按估算语速重排时间轴
+      </label>
+    </div>
+  </header>
+
+  <!-- 时间轴完整性警告横幅（有错乱时自动出现） -->
+  <div id="tlAlert" class="tl-alert" style="display:none"></div>
+
+  <section class="config">
+    <div class="cfg-item">
+      <label>中文配音语速（字/秒）</label>
+      <input type="number" id="rate" value="4.5" min="1" max="12" step="0.1" />
+      <span class="hint">自然语速约 4.0–5.0</span>
+    </div>
+    <div class="cfg-item">
+      <label>容差 (%)</label>
+      <input type="number" id="tol" value="5" min="0" max="100" step="1" />
+      <span class="hint">超出该比例才判为“超时”</span>
+    </div>
+    <div class="cfg-item">
+      <label class="chk"><input type="checkbox" id="onlyBad" /> 仅显示超时的片段</label>
+    </div>
+    <div class="cfg-item file">
+      <span class="hint">当前文件：</span><span id="file">未导入</span>
+    </div>
+  </section>
+
+  <section class="config search-config">
+    <div class="cfg-item">
+      <label>查找</label>
+      <input type="text" id="searchInput" placeholder="例如：VAG-73" />
+    </div>
+    <div class="cfg-item">
+      <label>替换为</label>
+      <input type="text" id="replaceInput" placeholder="例如：ВАК-73" />
+    </div>
+    <button id="replaceBtn" class="btn secondary">全局替换</button>
+  </section>
+
+  <!-- 时间轴调整面板 -->
+  <section class="config timeline-config" id="timelinePanel">
+    <div class="cfg-item">
+      <label>作用范围</label>
+      <div class="row-inline">
+        <select id="tlScope">
+          <option value="all">全部字幕</option>
+          <option value="from">当前段 → 末尾</option>
+          <option value="only">仅当前段</option>
+        </select>
+      </div>
+      <span class="hint">当前段：<b id="tlFocus">点击表格任意一行选中</b></span>
+    </div>
+
+    <div class="cfg-item">
+      <label>整体偏移</label>
+      <div class="row-inline">
+        <input type="text" id="tlShift" placeholder="+1.5 / -0.3 / 500ms" />
+        <button class="btn secondary" id="tlShiftBtn">应用偏移</button>
+      </div>
+      <span class="hint">支持 <code>+1.5</code> 秒、<code>-300ms</code> 等写法</span>
+    </div>
+
+    <div class="cfg-item">
+      <label>比例缩放（×）</label>
+      <div class="row-inline">
+        <input type="number" id="tlScale" value="1" step="0.0001" />
+        <button class="btn secondary" id="tlScaleBtn">应用缩放</button>
+      </div>
+      <span class="hint">以范围内首段为锚点；1.0382 = 拉长 3.82%</span>
+    </div>
+
+    <div class="cfg-item tl-anchor">
+      <label>两点锚点同步（修正音画整体错位）</label>
+      <div class="row-inline">
+        <span class="mini-lbl">原</span><input class="t-anchor" id="tlA1" placeholder="00:00:00,000" />
+        <span class="arrow">→</span><input class="t-anchor" id="tlA2" placeholder="00:00:00,000" />
+        <span class="mini-lbl">原</span><input class="t-anchor" id="tlB1" placeholder="00:00:00,000" />
+        <span class="arrow">→</span><input class="t-anchor" id="tlB2" placeholder="00:00:00,000" />
+        <button class="btn secondary" id="tlAnchorBtn">两点同步</button>
+        <button class="btn-mini" id="tlFillBtn" title="把两个『原时间』填成当前段开始 与 最后一段开始">⤵ 填原时间</button>
+      </div>
+      <span class="hint">例：字幕 00:00:49,820 对应视频 00:00:43,160；字幕 00:23:40,420 对应视频 00:24:34,697</span>
+    </div>
+
+    <div class="cfg-item">
+      <label>从视频取时</label>
+      <div class="row-inline">
+        <button class="btn secondary" id="tlPickBtn">⏱ 取当前播放时间</button>
+        <span class="hint" id="tlPlayerTime">未载入视频</span>
+      </div>
+      <span class="hint">写入最后一个被点过的时间输入框</span>
+    </div>
+
+    <div class="cfg-item tl-status-item">
+      <label>状态</label>
+      <span class="hint" id="tlStatus">—</span>
+      <span class="hint" id="tlOverlap"></span>
+      <button class="btn secondary" id="tlFixBtn" title="把倒退/重叠的段落依次顺推，恢复严格递增（Ctrl+Z 可撤销）">🔧 修复错乱</button>
+      <button class="btn secondary" id="tlJumpBtn" title="跳到第一处时间轴问题">定位问题</button>
+    </div>
+  </section>
+
+  <!-- 媒体预览区域 -->
+  <section class="media-preview" id="mediaPreview" style="display:none; text-align: center; margin: 15px auto; max-width: 800px; border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+    <video id="mediaPlayer" controls style="width: 100%; max-height: 400px; outline: none; display: block;"></video>
+  </section>
+
+  <!-- 拖拽提示遮罩 -->
+  <div id="dropZoneHint" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); color: white; z-index: 9999; justify-content: center; align-items: center; font-size: 2em; pointer-events: none;">
+    松开鼠标导入 SRT 或音视频文件进行预览
+  </div>
+
+  <div id="summary" class="summary">请先导入字幕文件。可以拖拽 .srt 或 .mp4/.mp3 文件到网页任意位置。</div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="c-idx">#</th>
+          <th style="width:40px">操作</th>
+          <th>开始（可编辑）</th>
+          <th>结束（可编辑）</th>
+          <th>字幕时长</th>
+          <th>字数</th>
+          <th>估算配音</th>
+          <th>状态</th>
+          <th>字幕内容（可编辑）</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
